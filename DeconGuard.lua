@@ -40,32 +40,33 @@ function get_guard_size(pindex)
 end
 
 -- Debug function
-function dump_guard(pindex)
-	local g = global.guard.data[pindex]
+function dump_guard(event)
+	local g = global.guard.data[event.player_index]
 	if not g then
 		return
 	end 
-	game.print("Guard dump for " .. game.players[pindex] .. " F=" .. g.first .. " L=" .. g.last)
+	game.print("Guard dump for " .. game.players[event.player_index] .. " F=" .. g.first .. " L=" .. g.last)
 	for i=g.first, g.last do
 		game.print(i .. " - " .. g.entities[i].name )
 	end
 end
 
 -- add new entity to the list
-function add_guard(pindex, entity)
-	if not global.guard.data[pindex] then		
-		global.guard.data[pindex] = init_guard_user()
+function add_guard(event)	
+	if not global.guard.data[event.player_index] then		
+		global.guard.data[event.player_index] = init_guard_user()
 	end
-	local g = global.guard.data[pindex]
+	local g = global.guard.data[event.player_index]
 	local last = g.last + 1
-	g.entities[last] = entity
-	g.expires[last] = game.tick + global.guard.config.guard_time * 60 * game.speed	-- set expiry date in the future
+	g.entities[last] = event.entity
+	g.expires[last] = event.tick + global.guard.config.guard_time * 60 * game.speed	-- set expiry date in the future
 	g.last = last
-	global.guard.data[pindex] = g
+	global.guard.data[event.player_index] = g
 end
 
 -- expire old entries for given user
-function expire_guard(pindex)
+function expire_guard(event)
+	local pindex = event.player_index
 	if global.guard.data[pindex] == nil then
 		return
 	end
@@ -85,7 +86,7 @@ function expire_guard(pindex)
 	
 	-- expire old items	
 	local first = g.first
-	while first <= g.last and g.expires[first] <= game.tick do		
+	while first <= g.last and g.expires[first] <= event.tick do		
 		game.print("Expired: " .. g.entities[first].name .. " S=" .. get_guard_size(pindex))
 		g.entities[first] = nil
 		g.expires[first] = nil
@@ -102,13 +103,15 @@ end
 
 -- delete the entire guard for given user
 function delete_guard(pindex)
+	local pindex = event.player_index
 	if global.guard.data[pindex] ~= nil then
 		global.guard.data[pindex] = nil
 	end
 end
 
 -- Cancel deconstruction for stored entities
-function enforce_guard(pindex)
+function enforce_guard(event)
+	local pindex = event.player_index
 	local deconstructs = get_guard_size(pindex)
 	if deconstructs == 0 then
 		return
@@ -123,7 +126,7 @@ function enforce_guard(pindex)
 	game.print("Player " .. game.players[pindex].name .. " tried to deconstruct way too much!")
 	game.players[pindex].print("You have tried to deconstruct too much. Your deconstruction planner privileges have been rescinded.")
 	
-	global.guard.bans[pindex] = game.tick + global.guard.config.ban_time * 60 * game.speed;
+	global.guard.bans[pindex] = event.tick + global.guard.config.ban_time * 60 * game.speed;
 	global.guard.stats.bans = global.guard.stats.bans + 1
 	-- cancel all deconstructions
 	local g = global.guard.data[pindex]	
@@ -171,62 +174,76 @@ function guard_deconstruction(event)
 	end
 		
 	-- expire old entries
-	expire_guard(event.player_index)
+	expire_guard(event)
 	
 	-- add new entity
-	add_guard(event.player_index, event.entity)
+	add_guard(event)
 	
 	-- enforce, if necessary
-	enforce_guard(event.player_index)
+	enforce_guard(event)
 
 	--dump_guard(pindex)
 end
 
 function guard_player_dc(event)
-	expire_guard(event.player_index)
+	expire_guard(event)
 end
 
 -------------------------------------------------------------------------------
 -- Commands
 -------------------------------------------------------------------------------
 
-function guard_dcguardon_cmd(x)
-	if not game.player.admin then
-		game.print("You must be a server administrator to run this command")
+function guard_dcguard_cmd(event)
+	local p = game.players[event.player_index]
+	if not p.admin then
+		p.print("You must be a server administrator to run this command")
 		return
 	end 
 	global.guard.config.enabled = true
-	game.print(x)
+	p.print("Deconstruction Guard Enabled")
+	local tmp = ""
+	-- if x ~= nil then
+		-- tmp = tmp .. "X = " .. x
+	-- end
+	-- if y ~= nil then
+		-- tmp = tmp .. " Y = " .. y
+	-- end
+	-- if z ~= nil then
+		-- tmp = tmp .. " Z = " .. z
+	-- end 
+	for k, v in pairs(x) do
+	
+		game.print(k .. " - " .. v)
+	end
 end
 
-function guard_dcguardoff_cmd()
-	if not game.player.admin then
-		game.print("You must be a server administrator to run this command")
+function guard_dcguardoff_cmd(event)
+	local p = game.players[event.player_index]
+	if not p.admin then
+		p.print("You must be a server administrator to run this command")
 		return
 	end 
 	global.guard.config.enabled = false
+	p.print("Deconstruction Guard Disabled")
 end
 
 -- Report statistics
-function guard_stats_cmd()
-if not game.player.admin then
-		game.print("You must be a server administrator to run this command")
+function guard_stats_cmd(event)
+	local p = game.players[event.player_index]
+	if not p.admin then
+		p.print("You must be a server administrator to run this command")
 		return
 	end 
-	game.player.print("Deconstruction Guard Statistics:")
-	game.player.print("Bans = " .. global.guard.stats.bans)
+	p.print("Deconstruction Guard Statistics:")
+	p.print("Bans = " .. global.guard.stats.bans)
 end
 
 -- Register in-game commands
 function register_commands()
-	commands.remove_command("dcguardstats");
-	commands.add_command("dcguardstats", "Deconstruction Guard stats", guard_stats_cmd)
 	
-	commands.remove_command("dcguardon");
-	commands.add_command("dcguardon", "Deconstruction Guard Enable", guard_dcguardon_cmd)	
-	
-	commands.remove_command("dcguardoff");
-	commands.add_command("dcguardoff", "Deconstruction Guard Disable", guard_dcguardoff_cmd)
+	commands.remove_command("dcguard");
+	commands.add_command("dcguard", "Deconstruction Guard Enable", guard_dcguard_cmd)	
+
 end
 
 
