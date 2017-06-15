@@ -130,7 +130,7 @@ function on_player_deconstructed_area(event)
 
   -- skip check if player is an admin
 	if game.players[event.player_index].admin then
-		--return true
+		return true
 	end
 	
 	-- skip check if the user is part of a trusted group
